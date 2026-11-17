@@ -13,7 +13,7 @@
 # menjalankan model final dan dua pembanding untuk presentasi.
 #
 # Cara pakai: buka di RStudio, sesuaikan folder_proyek bila perlu, lalu Source.
-# Waktu jalan +- 1 menit. Paket yang dibutuhkan: forecast.
+# Waktu jalan +- 1 menit. Paket yang dibutuhkan: forecast, urca.
 # =====================================================================
 
 # 0. KONFIGURASI -------------------------------------------------------
@@ -128,6 +128,11 @@ simpan_csv(tahunan, "02_total_tahunan.csv")
 y24 <- prov$perjalanan[prov$tahun == 2024]
 y25 <- prov$perjalanan[prov$tahun == 2025]
 yoy_2025 <- persen(y25, y24)
+# Pertumbuhan per bulan 2025 vs 2024 (dasar klaim "11 dari 12 bulan tumbuh > 20%").
+pertumbuhan_bulanan <- data.frame(bulan = bulan_id, tahun_2024 = y24, tahun_2025 = y25,
+                                  pertumbuhan_persen = yoy_2025)
+simpan_csv(pertumbuhan_bulanan, "02b_pertumbuhan_bulanan_2025.csv")
+cat("Bulan 2025 yang tumbuh > 20%:", sum(yoy_2025 > 20), "dari 12\n")
 
 kontribusi <- do.call(rbind, lapply(wilayah_kab, function(w) {
   a <- sum(data_wilayah$perjalanan[data_wilayah$wilayah == w & data_wilayah$tahun == 2025])
@@ -152,6 +157,17 @@ lebaran <- sapply(seq_along(bulan_kal), function(i) {
 stopifnot(sum(lebaran) == length(idulfitri) * (2 * jendela_lebaran + 1))
 # Untuk penanda grafik: bulan yang memuat sebagian besar pekan sesudah Idulfitri (H s.d. H+7).
 bulan_lebaran <- as.Date(format(idulfitri + 3, "%Y-%m-01"))
+
+# Tabel exposure: hanya bulan yang terkena jendela Lebaran.
+# Contoh: Lebaran 2025 (31 Mar) terbagi 11 hari di Maret dan 10 hari di April,
+# sedangkan Lebaran 2026 (21 Mar) penuh 21 hari di Maret.
+tabel_exposure <- data.frame(tanggal = bulan_kal, hari_exposure = lebaran,
+                             penanda_grafik = bulan_kal %in% bulan_lebaran)
+tabel_exposure$perjalanan <- prov$perjalanan[match(bulan_kal, prov$tanggal)]
+tabel_exposure <- subset(tabel_exposure, hari_exposure > 0)
+simpan_csv(tabel_exposure, "14_lebaran_exposure.csv")
+cat("\n=== LEBARAN EXPOSURE (hari H-10 s.d. H+10 per bulan) ===\n")
+print(tabel_exposure, row.names = FALSE)
 
 # 3b. UJI STASIONERITAS (DASAR PEMILIHAN d = 1, D = 0) -------------------------------
 # Diuji pada log perjalanan data latih (Jan 2021 - Des 2025), sama dengan seri model.
@@ -290,22 +306,41 @@ cat("\n=== RAMALAN 2026:", label_model[[model_terbaik]], "===\n")
 print(ramalan[, -1], row.names = FALSE)
 cat("Total ramalan 2026:", sum(ramalan$prediksi), "\n")
 
+# Koefisien beserta uji z (p-value) untuk satu model ARIMA.
+tabel_koef <- function(fit) {
+  se <- sqrt(diag(fit$var.coef))
+  data.frame(parameter = names(coef(fit)), estimasi = coef(fit), galat_baku = se,
+             z = coef(fit) / se, p = 2 * pnorm(-abs(coef(fit) / se)), row.names = NULL)
+}
+# AICc, BIC, dan uji Ljung-Box residual (lag 24; fitdf = 4 parameter ARMA).
+tabel_diagnostik <- function(fit) {
+  lb <- Box.test(residuals(fit), lag = 24, type = "Ljung-Box", fitdf = 4)
+  data.frame(AICc = fit$aicc, BIC = fit$bic,
+             ljung_box_lag24 = unname(lb$statistic), p_ljung_box = lb$p.value)
+}
+
 # Diagnostik model terbaik (data latih Jan 2021 - Des 2025).
 fit_terbaik <- hasil[[model_terbaik]]$fit
 if (!is.null(fit_terbaik)) {
-  se <- sqrt(diag(fit_terbaik$var.coef))
-  koef <- data.frame(parameter = names(coef(fit_terbaik)), estimasi = coef(fit_terbaik),
-                     galat_baku = se, z = coef(fit_terbaik) / se,
-                     p = 2 * pnorm(-abs(coef(fit_terbaik) / se)), row.names = NULL)
-  lb <- Box.test(residuals(fit_terbaik), lag = 24, type = "Ljung-Box", fitdf = 4)
-  diagnostik <- data.frame(AICc = fit_terbaik$aicc, BIC = fit_terbaik$bic,
-                           ljung_box_lag24 = unname(lb$statistic), p_ljung_box = lb$p.value)
+  koef <- tabel_koef(fit_terbaik)
+  diagnostik <- tabel_diagnostik(fit_terbaik)
   simpan_csv(koef, "09_koefisien_model_terbaik.csv")
   simpan_csv(diagnostik, "10_diagnostik_model_terbaik.csv")
   cat("\n=== KOEFISIEN DAN DIAGNOSTIK ===\n")
   print(koef, row.names = FALSE, digits = 4)
   print(diagnostik, row.names = FALSE, digits = 4)
 }
+
+# Koefisien SARIMAX Lebaran: menunjukkan besar dan signifikansi efek Lebaran.
+# Koefisien 'lebaran' = perubahan log perjalanan per 1 hari exposure.
+fit_sarimax <- hasil$SARIMAX_Lebaran$fit
+koef_sarimax <- tabel_koef(fit_sarimax)
+diagnostik_sarimax <- tabel_diagnostik(fit_sarimax)
+simpan_csv(koef_sarimax, "09b_koefisien_sarimax_lebaran.csv")
+simpan_csv(diagnostik_sarimax, "10b_diagnostik_sarimax_lebaran.csv")
+cat("\n=== KOEFISIEN DAN DIAGNOSTIK SARIMAX LEBARAN ===\n")
+print(koef_sarimax, row.names = FALSE, digits = 4)
+print(diagnostik_sarimax, row.names = FALSE, digits = 4)
 
 # Pembaruan: latih ulang dengan seluruh data (s.d. bulan terakhir), ramal sisa 2026.
 h_sisa <- 12L - as.integer(format(prov$tanggal[N], "%m"))
@@ -316,6 +351,8 @@ if (h_sisa > 0) {
   simpan_csv(pembaruan, "11_ramalan_pembaruan_sisa_2026.csv")
   cat("\n=== PEMBARUAN SISA 2026 (latih s.d.", format(prov$tanggal[N], "%b %Y"), ") ===\n")
   print(pembaruan, row.names = FALSE)
+  total_pembaruan <- sum(aktual_2026[ada]) + sum(pembaruan$prediksi)
+  cat("Total 2026 versi pembaruan (aktual Jan - Sep + ramalan sisa):", total_pembaruan, "\n")
 }
 
 # 7. GRAFIK UNTUK SLIDE (PNG 16:9, siap tempel di Canva) ---------------------------------
@@ -369,9 +406,11 @@ text(d$porsi_kenaikan_persen, b, sprintf("%s%%  (tumbuh +%s%%)",
 dev.off()
 
 # G3. Pola bulanan per tahun: puncak mengikuti Lebaran.
+# Hanya 2024 - 2026. Pada 2021 - 2023 (pembatasan COVID dan masa pemulihan) bulan
+# Lebaran belum menjadi puncak; 2021 puncak di Oktober, 2023 Lebaran justru terendah.
 mulai_png("G3_puncak_mengikuti_lebaran.png")
-tahun_g3 <- 2023:2026
-warna_g3 <- c("#B7C3D9", "#6F86B3", warna[["navy"]], warna[["merah"]])
+tahun_g3 <- 2024:2026
+warna_g3 <- c("#6F86B3", warna[["navy"]], warna[["merah"]])
 rentang <- range(prov$perjalanan[prov$tahun %in% tahun_g3])
 plot(1:12, type = "n", xlim = c(1, 12.6), ylim = rentang, axes = FALSE, xlab = "",
      ylab = "Juta perjalanan")
