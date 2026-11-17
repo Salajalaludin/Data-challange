@@ -406,11 +406,9 @@ text(d$porsi_kenaikan_persen, b, sprintf("%s%%  (tumbuh +%s%%)",
 dev.off()
 
 # G3. Pola bulanan per tahun: puncak mengikuti Lebaran.
-# Hanya 2024 - 2026. Pada 2021 - 2023 (pembatasan COVID dan masa pemulihan) bulan
-# Lebaran belum menjadi puncak; 2021 puncak di Oktober, 2023 Lebaran justru terendah.
 mulai_png("G3_puncak_mengikuti_lebaran.png")
-tahun_g3 <- 2024:2026
-warna_g3 <- c("#6F86B3", warna[["navy"]], warna[["merah"]])
+tahun_g3 <- 2023:2026
+warna_g3 <- c("#B7C3D9", "#6F86B3", warna[["navy"]], warna[["merah"]])
 rentang <- range(prov$perjalanan[prov$tahun %in% tahun_g3])
 plot(1:12, type = "n", xlim = c(1, 12.6), ylim = rentang, axes = FALSE, xlab = "",
      ylab = "Juta perjalanan")
