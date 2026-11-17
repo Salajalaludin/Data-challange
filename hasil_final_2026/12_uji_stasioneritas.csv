@@ -1,0 +1,7 @@
+"uji","seri","statistik","kritis_5persen","kesimpulan"
+"ADF (H0: ada akar unit)","log level, tanpa tren",-2.34160111251578,-2.89,"tidak stasioner"
+"KPSS (H0: stasioner)","log level, tanpa tren",1.30202002725839,0.463,"tidak stasioner"
+"ADF (H0: ada akar unit)","log level, dengan tren",-4.59176785246811,-3.45,"stasioner"
+"KPSS (H0: stasioner)","log level, dengan tren",0.043973789997358,0.146,"stasioner"
+"ADF (H0: ada akar unit)","log, differencing 1 kali",-6.34837553918911,-2.89,"stasioner"
+"KPSS (H0: stasioner)","log, differencing 1 kali",0.0286734684168517,0.463,"stasioner"
